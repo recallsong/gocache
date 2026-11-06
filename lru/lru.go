@@ -6,33 +6,23 @@ import (
 	"sync"
 	"time"
 
-	"github.com/recallsong/gocache/common"
-	"github.com/recallsong/gocache/common/singleflight"
+	"github.com/recallsong/gocache"
+	"github.com/recallsong/gocache/internal"
+	"github.com/recallsong/gocache/internal/singleflight"
 )
 
 // Cache .
 type Cache[K comparable, V any] struct {
-	stats      common.Stats
-	cfg        *Config[K, V]
-	items      map[K]*list.Element
-	evictList  *list.List
+	stats      internal.Stats
+	cfg        *gocache.Config[K, V]
 	nowFunc    func() time.Time
 	mu         sync.RWMutex
-	loaderFunc common.LoaderExpireFunc[K, V]
+	loaderFunc gocache.LoaderExpireFunc[K, V]
 	group      singleflight.Group[K, V]
 	expiration *time.Duration
-}
 
-// Config .
-type Config[K comparable, V any] struct {
-	Size             int
-	Expiration       time.Duration
-	NowFunc          func() time.Time
-	AddedFunc        common.AddedFunc[K, V]
-	EvictedFunc      common.EvictedFunc[K, V]
-	LoaderExpireFunc common.LoaderExpireFunc[K, V]
-	LoaderFunc       common.LoaderFunc[K, V]
-	PurgeVisitorFunc common.PurgeVisitorFunc[K, V]
+	items     map[K]*list.Element
+	evictList *list.List
 }
 
 type cacheItem[K comparable, V any] struct {
@@ -41,8 +31,10 @@ type cacheItem[K comparable, V any] struct {
 	expiration *time.Time
 }
 
+var _ gocache.Cache[string, string] = (*Cache[string, string])(nil)
+
 // New .
-func New[K comparable, V any](config Config[K, V]) *Cache[K, V] {
+func New[K comparable, V any](config gocache.Config[K, V]) *Cache[K, V] {
 	c := &Cache[K, V]{
 		cfg:     &config,
 		nowFunc: config.NowFunc,
@@ -75,6 +67,20 @@ func (c *Cache[K, V]) init() {
 	c.items = make(map[K]*list.Element)
 }
 
+// Set a new key-value pair
+func (c *Cache[K, V]) Set(key K, value V) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.set(key, value, c.expiration)
+}
+
+// SetWithExpire set a new key-value pair with an expiration time
+func (c *Cache[K, V]) SetWithExpire(key K, value V, expiration time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.set(key, value, &expiration)
+}
+
 func (c *Cache[K, V]) set(key K, value V, expiration *time.Duration) {
 
 	var item *cacheItem[K, V]
@@ -105,33 +111,19 @@ func (c *Cache[K, V]) set(key K, value V, expiration *time.Duration) {
 	}
 }
 
-// Set a new key-value pair
-func (c *Cache[K, V]) Set(key K, value V) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.set(key, value, c.expiration)
-}
-
-// Set a new key-value pair with an expiration time
-func (c *Cache[K, V]) SetWithExpire(key K, value V, expiration time.Duration) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.set(key, value, &expiration)
-}
-
 // Get a value from cache pool using key if it exists.
 // If it does not exists key and has LoaderFunc,
 // generate a value using `LoaderFunc` method returns value.
 func (c *Cache[K, V]) Get(ctx context.Context, key K, extra ...any) (V, error) {
 	v, err := c.GetIFPresent(key)
-	if err == common.ErrKeyNotFound && c.loaderFunc != nil {
+	if err == gocache.ErrKeyNotFound && c.loaderFunc != nil {
 		return c.getWithLoader(ctx, key, extra...)
 	}
 	return v, err
 }
 
 // GetIFPresent gets a value from cache pool using key if it exists.
-// If it does not exists key, returns KeyNotFoundError.
+// If it does not exists key, returns ErrKeyNotFound.
 func (c *Cache[K, V]) GetIFPresent(key K) (V, error) {
 	c.mu.Lock()
 	item, ok := c.items[key]
@@ -149,7 +141,7 @@ func (c *Cache[K, V]) GetIFPresent(key K) (V, error) {
 	c.mu.Unlock()
 	c.stats.IncrMissCount()
 	var v V
-	return v, common.ErrKeyNotFound
+	return v, gocache.ErrKeyNotFound
 }
 
 func (c *Cache[K, V]) getWithLoader(ctx context.Context, key K, extra ...any) (v V, err error) {
@@ -254,7 +246,7 @@ func (c *Cache[K, V]) GetALL() map[K]V {
 }
 
 // Visit  all key-value pairs in the cache.
-func (c *Cache[K, V]) Visit(fn func(key K, value V) bool, checkExpired bool) {
+func (c *Cache[K, V]) Visit(fn func(key K, value V) bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	now := c.nowFunc()
@@ -298,7 +290,7 @@ func (c *Cache[K, V]) Len() int {
 	return length
 }
 
-// Completely clear the cache
+// Purge completely clear the cache
 func (c *Cache[K, V]) Purge() {
 	c.mu.Lock()
 	defer c.mu.Unlock()

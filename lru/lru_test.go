@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/recallsong/gocache/common"
+	"github.com/recallsong/gocache"
 )
 
 func loader(ctx context.Context, key string, extra ...any) (string, error) {
@@ -48,7 +48,7 @@ func testGetCache(t *testing.T, c *Cache[string, string], numbers int) {
 func TestLRUGet(t *testing.T) {
 	size := 1000
 
-	cache := New(Config[string, string]{
+	cache := New(gocache.Config[string, string]{
 		Size:        size,
 		EvictedFunc: getSimpleEvictedFunc[string, string](t),
 	})
@@ -58,7 +58,7 @@ func TestLRUGet(t *testing.T) {
 
 func TestLoadingLRUGet(t *testing.T) {
 	size := 1000
-	cache := New(Config[string, string]{
+	cache := New(gocache.Config[string, string]{
 		Size:        size,
 		EvictedFunc: getSimpleEvictedFunc[string, string](t),
 		LoaderFunc:  loader,
@@ -67,7 +67,7 @@ func TestLoadingLRUGet(t *testing.T) {
 }
 
 func TestLRULength(t *testing.T) {
-	cache := New(Config[string, string]{
+	cache := New(gocache.Config[string, string]{
 		Size:        1000,
 		EvictedFunc: getSimpleEvictedFunc[string, string](t),
 		LoaderFunc:  loader,
@@ -83,7 +83,7 @@ func TestLRULength(t *testing.T) {
 
 func TestLRUEvictItem(t *testing.T) {
 	numbers := 11
-	cache := New(Config[string, string]{
+	cache := New(gocache.Config[string, string]{
 		Size:        10,
 		EvictedFunc: getSimpleEvictedFunc[string, string](t),
 		LoaderFunc:  loader,
@@ -98,7 +98,7 @@ func TestLRUEvictItem(t *testing.T) {
 }
 
 func TestLRUGetIFPresent(t *testing.T) {
-	cache := New(Config[string, string]{
+	cache := New(gocache.Config[string, string]{
 		Size:        8,
 		EvictedFunc: getSimpleEvictedFunc[string, string](t),
 		LoaderFunc: func(ctx context.Context, key string, extra ...any) (string, error) {
@@ -107,7 +107,7 @@ func TestLRUGetIFPresent(t *testing.T) {
 	})
 
 	_, err := cache.GetIFPresent("key")
-	if err != common.ErrKeyNotFound {
+	if err != gocache.ErrKeyNotFound {
 		t.Errorf("err should not be %v", err)
 	}
 
@@ -123,7 +123,7 @@ func TestLRUGetIFPresent(t *testing.T) {
 }
 
 func TestLRUHas(t *testing.T) {
-	cache := New(Config[string, string]{
+	cache := New(gocache.Config[string, string]{
 		Size:        2,
 		Expiration:  10 * time.Millisecond,
 		EvictedFunc: getSimpleEvictedFunc[string, string](t),
