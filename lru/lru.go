@@ -8,7 +8,7 @@ import (
 
 	"github.com/recallsong/gocache"
 	"github.com/recallsong/gocache/internal"
-	"github.com/recallsong/gocache/internal/singleflight"
+	"github.com/recallsong/singleflight"
 )
 
 // Cache .
